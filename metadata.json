@@ -1,0 +1,5 @@
+{
+  "name": "InfoBharatKa AI Blog",
+  "description": "An attractive and colorful blogging platform named 'InfoBharatKa' with a tricolor theme. It features an admin panel powered by the Gemini API, allowing users to generate blog posts and SEO metadata in Hindi with AI assistance. Security is enhanced by managing the API Key and Admin Password via environment variables.",
+  "requestFramePermissions": []
+}
