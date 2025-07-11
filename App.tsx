@@ -26,7 +26,11 @@ import {
 } from './services/firebaseService';
 
 const ProtectedRoute: React.FC<{ isLoggedIn: boolean | null }> = ({ isLoggedIn }) => {
-    if (isLoggedIn === null) return <Spinner />;
+    if (isLoggedIn === null) {
+        // While auth state is being resolved, the main App component shows a full-page spinner.
+        // Returning null here prevents a secondary spinner flash within the route.
+        return null;
+    }
     if (!isLoggedIn) return <Navigate to="/login" replace />;
     return <Outlet />;
 };
@@ -47,43 +51,57 @@ const App: React.FC = () => {
     }, []);
 
     useEffect(() => {
-        let authUnsubscribe: (() => void) | null = null;
+        if (!isFirebaseConfigured()) {
+            console.warn("Firebase configuration is missing. Running in Demo Mode.");
+            loadDemoData();
+            return;
+        }
         
-        const startApp = async () => {
-            if (!isFirebaseConfigured()) {
-                console.warn("Firebase configuration is missing. Running in Demo Mode.");
-                loadDemoData();
-                return;
-            }
+        let dataLoaded = false;
+        let isComponentMounted = true;
 
-            try {
-                await initializeFirebase();
-                authUnsubscribe = await onAuthStateChanged(user => {
-                    setIsLoggedIn(!!user);
-                    if (isLoggedIn === null) { // only load data on initial auth check
-                        Promise.all([getPosts(), getCategories()]).then(([fetchedPosts, fetchedCategories]) => {
-                            setPosts(fetchedPosts);
-                            if (fetchedCategories.length === 0) {
-                                seedDefaultCategories().then(() => getCategories()).then(setCategories);
-                            } else {
-                                setCategories(fetchedCategories);
-                            }
-                            setIsLoading(false);
-                        });
-                    }
-                });
-            } catch (error) {
-                console.error("Failed to initialize Firebase, falling back to Demo Mode.", error);
-                loadDemoData();
-            }
-        };
+        const authUnsubscribePromise = initializeFirebase().then(() => {
+            return onAuthStateChanged(user => {
+                if (!isComponentMounted) return;
+                
+                setIsLoggedIn(!!user);
 
-        startApp();
+                if (!dataLoaded) {
+                    dataLoaded = true; // Prevents re-fetching
+                    setIsLoading(true);
+
+                    Promise.all([getPosts(), getCategories()]).then(([fetchedPosts, fetchedCategories]) => {
+                        if (!isComponentMounted) return;
+                        setPosts(fetchedPosts);
+                        if (fetchedCategories.length === 0) {
+                            seedDefaultCategories().then(getCategories).then(setCategories);
+                        } else {
+                            setCategories(fetchedCategories);
+                        }
+                        setIsLoading(false);
+                    }).catch(err => {
+                        if (!isComponentMounted) return;
+                        console.error("Failed to load data, falling back to demo mode", err);
+                        loadDemoData();
+                    });
+                }
+            });
+        }).catch(error => {
+            if (!isComponentMounted) return;
+            console.error("Failed to initialize Firebase, falling back to Demo Mode.", error);
+            loadDemoData();
+            return null;
+        });
 
         return () => {
-            if (authUnsubscribe) authUnsubscribe();
+            isComponentMounted = false;
+            authUnsubscribePromise.then(unsubscribe => {
+                if (unsubscribe) {
+                    unsubscribe();
+                }
+            });
         };
-    }, [loadDemoData, isLoggedIn]);
+    }, [loadDemoData]);
     
     // --- Data Manipulation ---
     const addPost = async (post: Omit<BlogPost, 'id'>): Promise<void> => {
