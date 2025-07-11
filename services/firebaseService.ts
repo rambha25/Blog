@@ -1,4 +1,4 @@
-import { firebaseConfig } from '../firebaseConfig.ts';
+import { firebaseConfig } from '../firebaseConfig';
 import type { BlogPost, Category } from '../types';
 
 let initializationPromise: Promise<void> | null = null;
